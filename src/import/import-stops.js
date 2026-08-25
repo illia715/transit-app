@@ -5,10 +5,10 @@ import { parse } from 'csv-parse';
 import pg from 'pg';
 
 const DUBLIN_BOUNDS = {
-  minLat: 53.20,
-  maxLat: 53.45,
+  minLat: 53.22,
+  maxLat: 53.50,
   minLon: -6.55,
-  maxLon: -6.05
+  maxLon: -6.00
 };
 
 function isInDublinArea(lat, lon) {
