@@ -24,7 +24,7 @@ app.get('/stops/:id/arrivals', async (req, res) => {
          JOIN trips t ON st.trip_id = t.trip_id
          JOIN routes r ON t.route_id = r.route_id
          LEFT JOIN live_trip_updates ltu
-             ON ltu.trip_id = st.trip_id AND ltu.stop_id = st.stop_id
+            ON ltu.trip_id = st.trip_id AND ltu.stop_id = st.stop_id
          WHERE st.stop_id = $1`,
         [stopId]
     );
@@ -39,16 +39,30 @@ app.get('/stops/:id/arrivals', async (req, res) => {
         .filter(row => isUpcoming(now, row.resolvedTime))
         .sort((a, b) => a.resolvedTime - b.resolvedTime);
 
-    const deduped = [];
-    const seen = new Set();
+        const CLUSTER_WINDOW_MINUTES = 3;
+
+    const clusters = [];
 
     for (const arrival of arrivals) {
-        const key = `${arrival.route_short_name}|${arrival.trip_headsign}|${arrival.resolvedTime.getTime()}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-            deduped.push(arrival);
+        const matchingCluster = clusters.find(cluster => {
+            const last = cluster[cluster.length - 1];
+            const sameRoute = last.route_short_name === arrival.route_short_name;
+            const sameHeadsign = last.trip_headsign === arrival.trip_headsign;
+            const minutesApart = Math.abs(arrival.resolvedTime - last.resolvedTime) / 1000 / 60;
+            return sameRoute && sameHeadsign && minutesApart <= CLUSTER_WINDOW_MINUTES;
+        });
+
+        if (matchingCluster) {
+            matchingCluster.push(arrival);
+        } else {
+            clusters.push([arrival]);
         }
     }
+
+    const deduped = clusters.flatMap(cluster => {
+        const withLiveData = cluster.filter(a => a.delay_seconds !== null);
+        return withLiveData.length > 0 ? withLiveData : [cluster[0]];
+    });
 
     res.json(deduped);
 });
